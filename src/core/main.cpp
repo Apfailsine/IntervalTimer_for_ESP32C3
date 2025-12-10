@@ -4,6 +4,10 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include "datastructures.h"
+#include "board.h"
+
+#define BUTTON_PIN 0 // GPIO-Pin für den Button (z. B. GPIO 0)
+
 
 // Zugangsdaten für den Access Point
 const char* ssid = "ESP32_IntervalTimer";
@@ -65,6 +69,16 @@ void setup() {
         NULL,            // Parameter
         1,               // Priorität
         NULL             // Task-Handle
+    );
+
+    // Button-Task starten
+    xTaskCreate(
+        buttonTask,       // Funktion
+        "ButtonTask",     // Name des Tasks
+        2048,             // Stack-Größe
+        NULL,             // Parameter
+        1,                // Priorität
+        NULL              // Task-Handle
     );
 
     display.begin();
@@ -185,3 +199,15 @@ Exercise pushUps("Push-Ups");
     pushUps.sets.push_back(set2);
 
 */
+
+void loop() {
+    // put your main code here, to run repeatedly:
+}
+
+
+
+void buttonTask(void* parameter) {
+    
+
+    BoardService
+}

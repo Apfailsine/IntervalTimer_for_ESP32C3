@@ -4,6 +4,13 @@
 #include <vector>
 #include <string>
 
+enum class ButtonState
+{
+    NO_PRESS,
+    SHORT_PRESS,
+    LONG_PRESS,
+    EXTRA_LONG_PRESS,
+};
 
 enum class ExerciseState
 {
