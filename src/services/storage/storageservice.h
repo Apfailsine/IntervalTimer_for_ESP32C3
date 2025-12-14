@@ -9,6 +9,11 @@ class StorageService {
 public:
     using ExerciseId = std::array<uint8_t, 16>;
 
+    static constexpr size_t kMaxSets = 15;
+    static constexpr size_t kMaxRepsPerSet = 30;
+    static constexpr size_t kMaxExerciseNameLength = 64;
+    static constexpr size_t kMaxSetLabelLength = 64;
+
     struct ExerciseRecord {
         ExerciseId id;
         Exercise exercise;
@@ -16,10 +21,13 @@ public:
 
     StorageService();
 
-    ExerciseId addExercise(const Exercise& exercise);
+    bool addExercise(const Exercise& exercise, ExerciseId* outId = nullptr);
     bool updateExercise(const ExerciseId& id, const Exercise& exercise);
     bool removeExercise(const ExerciseId& id);
     void clear();
+
+    bool loadPersistent();
+    bool savePersistent() const;
 
     Exercise* findExercise(const ExerciseId& id);
     const Exercise* findExercise(const ExerciseId& id) const;
@@ -35,6 +43,9 @@ public:
 private:
     ExerciseId generateId();
     bool idExists(const ExerciseId& id) const;
+    bool validateExercise(const Exercise& exercise) const;
+    bool serialize(std::vector<uint8_t>& buffer) const;
+    bool deserialize(const uint8_t* data, size_t length);
 
     std::vector<ExerciseRecord> exercises_;
 };

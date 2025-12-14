@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <pgmspace.h>
 #include <cstdio>
+#include <algorithm>
 #include <map>
 #include <string>
 #include <utility>
@@ -137,6 +138,8 @@ const char INDEX_PAGE[] PROGMEM = R"rawliteral(
         .actions button { min-width: 140px; padding: 12px 18px; font-size: 1rem; font-weight: 600; border-radius: 10px; border: none; cursor: pointer; }
         .secondary-btn { background: #e0e0e0; color: #333; padding: 12px 18px; font-size: 1rem; font-weight: 600; border-radius: 10px; border: none; cursor: pointer; }
         .secondary-btn:hover { background: #d6d6d6; }
+        .danger-btn { background: #f44336; color: #fff; }
+        .danger-btn:hover { background: #d32f2f; }
         .save-btn { background: var(--accent); color: #fff; }
         .save-btn:hover { background: var(--accent-dark); }
         .icon-btn { width: 48px; height: 48px; border-radius: 50%; border: none; background: var(--accent); color: #fff; font-size: 1.75rem; font-weight: 600; cursor: pointer; box-shadow: 0 6px 16px rgba(255,152,0,0.25); transition: transform 0.1s ease; }
@@ -177,7 +180,7 @@ const char INDEX_PAGE[] PROGMEM = R"rawliteral(
 
             <div class="exercise-name-input">
                 <label for="exerciseName">Exercise Name:</label>
-                <input id="exerciseName" name="exerciseName" type="text" placeholder="Pushups" required>
+                <input id="exerciseName" name="exerciseName" type="text" placeholder="Pushups" required maxlength="64">
             </div>
 
             <div class="table-wrapper">
@@ -186,7 +189,7 @@ const char INDEX_PAGE[] PROGMEM = R"rawliteral(
                         <tr id="exerciseNameRow">
                             <th class="row-label" scope="row">Exercise Name</th>
                             <td class="editable-cell" id="exerciseNameCell" colspan="1">
-                                <input type="text" id="exerciseNameMirror" placeholder="Pushups">
+                                <input type="text" id="exerciseNameMirror" placeholder="Pushups" maxlength="64">
                             </td>
                             <td rowspan="7" id="addSetCell">
                                 <button type="button" id="addSetBtn" class="icon-btn" title="Add set">+</button>
@@ -215,6 +218,7 @@ const char INDEX_PAGE[] PROGMEM = R"rawliteral(
             </div>
 
             <div class="actions">
+                <button type="button" id="deleteExerciseBtn" class="danger-btn" style="display:none;">Löschen</button>
                 <button type="button" id="cancelBtn" class="secondary-btn">Zurück</button>
                 <button type="submit" class="save-btn">Speichern</button>
             </div>
@@ -224,6 +228,9 @@ const char INDEX_PAGE[] PROGMEM = R"rawliteral(
     <script>
     (() => {
         const state = { exercises: [] };
+
+        const MAX_SETS = 15; // keep in sync with StorageService::kMaxSets
+        const MAX_REPS_PER_SET = 20; // keep in sync with StorageService::kMaxRepsPerSet
 
         const addExerciseBtn = document.getElementById('addExerciseBtn');
         const exerciseSection = document.getElementById('exerciseSection');
@@ -237,10 +244,11 @@ const char INDEX_PAGE[] PROGMEM = R"rawliteral(
         const exerciseIdInput = document.getElementById('exerciseId');
         const formTitle = document.getElementById('formTitle');
         const cancelButtons = [document.getElementById('cancelBtn'), document.getElementById('closeFormBtn')];
+        const deleteExerciseBtn = document.getElementById('deleteExerciseBtn');
 
         const rowDefinitions = [
-            { rowId: 'setLabelRow', name: 'name', type: 'text', placeholder: 'Set name', required: true, defaultValue: (i) => `Set ${i + 1}` },
-            { rowId: 'repCountRow', name: 'reps', type: 'number', placeholder: '3', min: '1', step: '1', required: true, defaultValue: () => '3' },
+            { rowId: 'setLabelRow', name: 'name', type: 'text', placeholder: 'Set name', maxLength: '64', required: true, defaultValue: (i) => `Set ${i + 1}` },
+            { rowId: 'repCountRow', name: 'reps', type: 'number', placeholder: '3', min: '1', max: String(MAX_REPS_PER_SET), step: '1', required: true, defaultValue: () => '3' },
             { rowId: 'repDurationRow', name: 'repDuration', type: 'number', placeholder: '7', min: '1', step: '1', required: true, defaultValue: () => '7' },
             { rowId: 'pauseBetweenRow', name: 'pauseBetween', type: 'number', placeholder: '30', min: '0', step: '1', required: true, defaultValue: () => '30' },
             { rowId: 'pauseAfterRow', name: 'pauseAfter', type: 'number', placeholder: '180', min: '0', step: '1', required: true, defaultValue: () => '180' },
@@ -300,6 +308,10 @@ const char INDEX_PAGE[] PROGMEM = R"rawliteral(
             if (exerciseNameInput && exerciseNameMirror) {
                 syncValue(exerciseNameInput, exerciseNameMirror);
             }
+            if (deleteExerciseBtn) {
+                deleteExerciseBtn.style.display = 'none';
+                deleteExerciseBtn.disabled = true;
+            }
         };
 
         const toggleForm = (show, options = {}) => {
@@ -310,6 +322,11 @@ const char INDEX_PAGE[] PROGMEM = R"rawliteral(
                 formTitle.textContent = options.title || (formMode === 'edit' ? 'Übung bearbeiten' : 'Neue Übung');
                 if (exerciseIdInput) {
                     exerciseIdInput.value = options.id || '';
+                }
+                if (deleteExerciseBtn) {
+                    const isEdit = formMode === 'edit';
+                    deleteExerciseBtn.style.display = isEdit ? 'inline-flex' : 'none';
+                    deleteExerciseBtn.disabled = !isEdit;
                 }
             } else {
                 resetForm();
@@ -322,7 +339,9 @@ const char INDEX_PAGE[] PROGMEM = R"rawliteral(
                 `type="${def.type}"`,
                 def.placeholder ? `placeholder="${escapeAttr(def.placeholder)}"` : '',
                 def.min ? `min="${escapeAttr(def.min)}"` : '',
+                def.max ? `max="${escapeAttr(def.max)}"` : '',
                 def.step ? `step="${escapeAttr(def.step)}"` : '',
+                def.maxLength ? `maxlength="${escapeAttr(def.maxLength)}"` : '',
                 def.required ? 'required' : ''
             ].filter(Boolean).join(' ');
 
@@ -351,6 +370,10 @@ const char INDEX_PAGE[] PROGMEM = R"rawliteral(
         };
 
         const handleAddSet = (preset) => {
+            if (setCount >= MAX_SETS) {
+                setStatus(`Maximal ${MAX_SETS} Sets erreicht.`, true);
+                return;
+            }
             const index = setCount;
             setCount += 1;
             exerciseNameCell.colSpan = Math.max(setCount, 1);
@@ -369,9 +392,13 @@ const char INDEX_PAGE[] PROGMEM = R"rawliteral(
                 return;
             }
             sets.forEach((set) => {
+                if (setCount >= MAX_SETS) {
+                    return;
+                }
+                const repsValue = set && set.reps !== undefined ? Math.min(set.reps, MAX_REPS_PER_SET) : '';
                 handleAddSet({
                     name: set && set.name !== undefined ? set.name : '',
-                    reps: set && set.reps !== undefined ? set.reps : '',
+                    reps: repsValue,
                     repDuration: set && set.repDuration !== undefined ? set.repDuration : '',
                     pauseBetween: set && set.pauseBetween !== undefined ? set.pauseBetween : '',
                     pauseAfter: set && set.pauseAfter !== undefined ? set.pauseAfter : '',
@@ -452,14 +479,50 @@ const char INDEX_PAGE[] PROGMEM = R"rawliteral(
                 if (!payload || payload.status !== 'ok') {
                     throw new Error('Speichern fehlgeschlagen.');
                 }
+                const wasEdit = formMode === 'edit';
                 toggleForm(false);
-                setStatus(formMode === 'edit' ? 'Übung aktualisiert.' : 'Übung gespeichert.', false);
+                setStatus(wasEdit ? 'Übung aktualisiert.' : 'Übung gespeichert.', false);
                 await fetchExercises();
             } catch (error) {
                 console.error('Fehler beim Speichern', error);
                 setStatus('Fehler beim Speichern.', true);
             }
         });
+
+        if (deleteExerciseBtn) {
+            deleteExerciseBtn.addEventListener('click', async () => {
+                if (!exerciseIdInput || !exerciseIdInput.value) {
+                    return;
+                }
+                const currentName = exerciseNameInput ? exerciseNameInput.value.trim() : '';
+                const confirmText = currentName
+                    ? `Übung "${currentName}" wirklich löschen?`
+                    : 'Übung wirklich löschen?';
+                if (!window.confirm(confirmText)) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/exercise?id=${encodeURIComponent(exerciseIdInput.value)}`, {
+                        method: 'DELETE',
+                        cache: 'no-store'
+                    });
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    const payload = await response.json();
+                    if (!payload || payload.status !== 'ok') {
+                        throw new Error('Löschen fehlgeschlagen.');
+                    }
+                    toggleForm(false);
+                    setStatus('Übung gelöscht.', false);
+                    await fetchExercises();
+                } catch (error) {
+                    console.error('Fehler beim Löschen', error);
+                    setStatus('Fehler beim Löschen.', true);
+                }
+            });
+        }
 
         const fetchExercises = async () => {
             try {
@@ -520,6 +583,7 @@ void WebService::registerRoutes(WebServer& server) {
     server.on("/submit", [this, &server]() { this->handleSubmit(server); });
     server.on("/api/exercises", HTTP_GET, [this, &server]() { this->handleExercisesList(server); });
     server.on("/api/exercise", HTTP_GET, [this, &server]() { this->handleExerciseDetail(server); });
+    server.on("/api/exercise", HTTP_DELETE, [this, &server]() { this->handleExerciseDelete(server); });
     server.on("/favicon.ico", HTTP_GET, [&server]() { server.send(204); });
     server.onNotFound([&server]() {
         Serial.printf("[Web] Unhandled request: %s\n", server.uri().c_str());
@@ -562,6 +626,39 @@ void WebService::handleExerciseDetail(WebServer& server) {
     } else {
         server.send(404, "application/json", "{\"status\":\"error\",\"message\":\"Not found\"}");
     }
+}
+
+void WebService::handleExerciseDelete(WebServer& server) {
+    const String idParam = server.arg("id");
+    if (idParam.isEmpty()) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing id\"}");
+        return;
+    }
+    if (idParam.length() != kExerciseIdHexLength) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid id\"}");
+        return;
+    }
+
+    const auto id = StorageService::fromHex(idParam);
+    const String normalized = StorageService::toHex(id);
+    if (!idParam.equalsIgnoreCase(normalized)) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid id\"}");
+        return;
+    }
+
+    if (!storageService.removeExercise(id)) {
+        server.send(404, "application/json", "{\"status\":\"error\",\"message\":\"Not found\"}");
+        return;
+    }
+
+    storageService.savePersistent();
+
+    if (hasExercise_ && id == lastExerciseId_) {
+        hasExercise_ = 0;
+        lastExerciseId_.fill(0);
+    }
+
+    server.send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
 void WebService::handleSubmit(WebServer& server) {
@@ -627,8 +724,18 @@ void WebService::handleSubmit(WebServer& server) {
     }
 
     if (!exerciseName.empty() && !sets.empty()) {
+        if (exerciseName.length() > StorageService::kMaxExerciseNameLength) {
+            exerciseName.resize(StorageService::kMaxExerciseNameLength);
+        }
+
         Exercise builtExercise(exerciseName);
+        size_t addedSets = 0;
         for (const auto& pair : sets) {
+            if (addedSets >= StorageService::kMaxSets) {
+                Serial.println("[Web] Set limit reached; remaining sets ignored.");
+                break;
+            }
+
             const SetInput& input = pair.second;
             Serial.printf("[Web] Set %d (%s): reps=%d repDuration=%d pauseBetween=%d pauseAfter=%d intensity=%d\n",
                           pair.first + 1,
@@ -638,48 +745,62 @@ void WebService::handleSubmit(WebServer& server) {
                           input.pauseBetween,
                           input.pauseAfter,
                           input.percentIntensity);
+
             std::string setLabel = input.name.length() ? std::string(input.name.c_str())
                                                        : std::string("Set ") + std::to_string(pair.first + 1);
+            if (setLabel.length() > StorageService::kMaxSetLabelLength) {
+                setLabel.resize(StorageService::kMaxSetLabelLength);
+            }
+
             Set set(std::move(setLabel), input.pauseAfter, input.percentIntensity);
-            for (int r = 0; r < input.reps; ++r) {
+            int clampedReps = std::max(0, std::min(input.reps, static_cast<int>(StorageService::kMaxRepsPerSet)));
+            for (int r = 0; r < clampedReps; ++r) {
                 set.reps.emplace_back(input.repDuration, input.pauseBetween);
             }
+
             builtExercise.sets.push_back(std::move(set));
+            ++addedSets;
         }
 
-        StorageService::ExerciseId storedId{};
-        bool stored = false;
-        bool updated = false;
-
-        if (updateRequested && storageService.updateExercise(updateId, builtExercise)) {
-            storedId = updateId;
-            stored = true;
-            updated = true;
-            Serial.println("[Web] Exercise updated in memory.");
+        if (builtExercise.sets.empty()) {
+            Serial.println("[Web] No sets after applying limits.");
         } else {
-            storedId = storageService.addExercise(builtExercise);
-            stored = true;
-            if (updateRequested) {
-                Serial.println("[Web] Exercise update fallback: stored as new entry.");
-            } else {
-                Serial.println("[Web] Exercise stored in memory.");
-            }
-        }
+            StorageService::ExerciseId storedId{};
+            bool stored = false;
+            bool updated = false;
 
-        if (stored) {
-            lastExerciseId_ = storedId;
-            hasExercise_ = 1;
-            String response = "{\"status\":\"ok\",\"id\":\"";
-            response += StorageService::toHex(storedId);
-            response += "\",\"mode\":\"";
-            response += updated ? "update" : "create";
-            response += "\"}";
-            server.send(200, "application/json", response);
-            return;
+            if (updateRequested) {
+                if (storageService.updateExercise(updateId, builtExercise)) {
+                    storedId = updateId;
+                    stored = true;
+                    updated = true;
+                    Serial.println("[Web] Exercise updated in memory.");
+                }
+            } else {
+                if (storageService.addExercise(builtExercise, &storedId)) {
+                    stored = true;
+                    Serial.println("[Web] Exercise stored in memory.");
+                }
+            }
+
+            if (stored) {
+                storageService.savePersistent();
+                lastExerciseId_ = storedId;
+                hasExercise_ = 1;
+                String response = "{\"status\":\"ok\",\"id\":\"";
+                response += StorageService::toHex(storedId);
+                response += "\",\"mode\":\"";
+                response += updated ? "update" : "create";
+                response += "\"}";
+                server.send(200, "application/json", response);
+                return;
+            }
         }
     }
 
-    hasExercise_ = 0;
+    if (!updateRequested) {
+        hasExercise_ = 0;
+    }
     Serial.println("[Web] Exercise data incomplete; nothing stored.");
     server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Ungültige Übung\"}");
 }

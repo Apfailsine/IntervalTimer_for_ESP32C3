@@ -1,7 +1,10 @@
 #include "board.h"
 
 BoardService::BoardService()
+    : buttonState_(ButtonState::NO_PRESS)
 {
+    SW1_PIN = kButtonPin;
+    pinMode(kButtonPin, INPUT_PULLUP); // enable internal pull-up for button on D10
 }
 
 /*!
@@ -10,94 +13,46 @@ BoardService::BoardService()
  */
 
 
-const std::array<ButtonState, 2> *BoardService::getButtons()
+const ButtonState *BoardService::getButtons()
 {
-    unsigned long curMil = millis(); // Get the current time
+    unsigned long curMil = millis();
 
-    //* Handle SW1
-    if (digitalRead(SW1_PIN) == LOW) // Button is pressed
+    if (sw1EventPending_)
     {
-        if (!sw1Pressed_) // on first iteration after button press was registered
+        sw1EventPending_ = false;
+        buttonState_ = ButtonState::NO_PRESS;
+    }
+
+    if (digitalRead(SW1_PIN) == LOW)
+    {
+        if (!sw1Pressed_)
         {
             sw1Pressed_ = true;
-            pressStartSW1_ = curMil; // Record press start time
-            if (!sw1ShortPressHandled_)
-            {
-                buttonState_[0] = ButtonState::SHORT_PRESS;
-                sw1ShortPressHandled_ = true;
-            }
+            pressStartSW1_ = curMil;
         }
-        // If button was pressed longer than LONG_PRESS_THRESHOLD_MS, go into this if-case (once)
-        else if (((curMil - pressStartSW1_) >= LONG_PRESS_THRESHOLD_MS) && !sw1LongPressHandled_)
-        {
-            buttonState_[0] = ButtonState::LONG_PRESS;
-            sw1LongPressHandled_ = true;
-        }
-        // If button was pressed longer than EXTENDED_PRESS_THRESHOLD_MS, go into this if-case (once)
-        else if (((curMil - pressStartSW1_) >= EXTENDED_PRESS_THRESHOLD_MS) && !sw1ExtendedPressHandled_)
-        {
-            buttonState_[0] = ButtonState::EXTRA_LONG_PRESS;
-            sw1ExtendedPressHandled_ = true;
-        }
-        else
-        {
-            buttonState_[0] = ButtonState::NO_PRESS; // If no change in ButtonState, return No_PRESS
-        }
-    }
-    //* reset logic-bools on release
-    else // Button not pressed
-    {
-        if (sw1Pressed_) // On immediate release (it was pressed in the previous getButtons() call)
-        {
-            sw1Pressed_ = false;
-            sw1ShortPressHandled_ = false;
-            sw1LongPressHandled_ = false;
-            sw1ExtendedPressHandled_ = false;
-            buttonState_[0] = ButtonState::NO_PRESS; // If no change in ButtonState, return NO_PRESS
-        }
+        return &buttonState_;
     }
 
-    //* Handle SW2
-    if (digitalRead(SW2_PIN) == LOW) // Button is pressed
+    if (sw1Pressed_)
     {
-        if (!sw2Pressed_) // on first iteration after button press was registered
+        sw1Pressed_ = false;
+        unsigned long pressDuration = curMil - pressStartSW1_;
+        if (pressDuration >= EXTENDED_PRESS_THRESHOLD_MS)
         {
-            sw2Pressed_ = true;
-            pressStartSW2_ = curMil; // Record press start time
-            if (!sw2ShortPressHandled_)
-            {
-                buttonState_[1] = ButtonState::SHORT_PRESS;
-                sw2ShortPressHandled_ = true;
-            }
+            buttonState_ = ButtonState::EXTRA_LONG_PRESS;
+            Serial.println("BoardService - getButtons EXTRA_LONG_PRESS detected");
         }
-        // If button was pressed longer than LONG_PRESS_THRESHOLD_MS, go into this if-case (once)
-        else if (((curMil - pressStartSW2_) >= LONG_PRESS_THRESHOLD_MS) && !sw2LongPressHandled_)
+        else if (pressDuration >= LONG_PRESS_THRESHOLD_MS)
         {
-            buttonState_[1] = ButtonState::LONG_PRESS;
-            sw2LongPressHandled_ = true;
-        }
-        // If button was pressed longer than EXTENDED_PRESS_THRESHOLD_MS, go into this if-case (once)
-        else if (((curMil - pressStartSW2_) >= EXTENDED_PRESS_THRESHOLD_MS) && !sw2ExtendedPressHandled_)
-        {
-            buttonState_[1] = ButtonState::EXTRA_LONG_PRESS;
-            sw2ExtendedPressHandled_ = true;
+            buttonState_ = ButtonState::LONG_PRESS;
+            Serial.println("BoardService - getButtons LONG_PRESS detected");
         }
         else
         {
-            buttonState_[1] = ButtonState::NO_PRESS; // If no change in ButtonState, return NO_PRESS
+            buttonState_ = ButtonState::SHORT_PRESS;
+            Serial.println("BoardService - getButtons SHORT_PRESS detected");
         }
-    }
-    //* reset logic-bools on release
-    else // Button not pressed
-    {
-        if (sw2Pressed_) // On immediate release (it was pressed in the previous getButtons() call)
-        {
-            sw2Pressed_ = false;
-            sw2ShortPressHandled_ = false;
-            sw2LongPressHandled_ = false;
-            sw2ExtendedPressHandled_ = false;
-            buttonState_[1] = ButtonState::NO_PRESS; // If no change in ButtonState, return NO_PRESS
-        }
+        sw1EventPending_ = true;
     }
 
     return &buttonState_;

@@ -18,6 +18,7 @@ public:
 private:
     void handleExercisesList(WebServer& server);
     void handleExerciseDetail(WebServer& server);
+    void handleExerciseDelete(WebServer& server);
     void handleSubmit(WebServer& server);
 
     StorageService::ExerciseId lastExerciseId_;

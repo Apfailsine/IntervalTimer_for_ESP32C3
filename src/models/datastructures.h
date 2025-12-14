@@ -14,6 +14,12 @@ enum class ButtonState
     EXTRA_LONG_PRESS,
 };
 
+enum class WifiState
+{
+    ACTIVE,
+    INACTIVE,
+};
+
 enum class RepState
 {
     PRE,

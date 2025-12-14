@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include "models/datastructures.h"
 #include "services/board/board.h"
+#include "services/display/displayservice.h"
 #include "services/storage/storageservice.h"
 #include "services/web/webpage.h"
 
@@ -16,12 +17,13 @@
 
 
 extern BoardService boardService;
+extern DisplayService displayService;
 extern StorageService storageService;
 extern WebService webService;
 
-unsigned long timePrev = 0;
-unsigned long timePauseStart = 0;
-unsigned long now = 0;
-unsigned long timeRep = 0;
+extern unsigned long timePrev;
+extern unsigned long timePauseStart;
+extern unsigned long now;
+extern unsigned long timeRep;
 
 #endif // GLOBALS_H
